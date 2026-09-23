@@ -9,50 +9,42 @@
     <title>Calculator</title>
 </head>
 <body>
-    <div class="container">
-        <div class="calculator dark">
-            <div class="theme-toggler active">
-                <i class="toggler-icon"></i>            
+    <main class="container">
+        <section class="calculator dark" aria-labelledby="calculator-heading">
+            <h1 id="calculator-heading" class="visually-hidden">Calculator</h1>
+
+            <button type="button" class="theme-toggler active" aria-label="Toggle light and dark theme"></button>
+
+            <output id="display" aria-live="polite" aria-atomic="true"></output>
+
+            <div class="buttons" role="group" aria-label="Calculator keypad">
+                <button type="button" class="btn-operator" data-operator="clear" id="clear" aria-label="Clear">C</button>
+                <button type="button" class="btn-operator" data-operator="sqrt" aria-label="Square root">&Sqrt;</button>
+                <button type="button" class="btn-operator" data-operator="percentage" id="percentage" aria-label="Percent">&percnt;</button>
+                <button type="button" class="btn-operator" data-operator="/" aria-label="Divide">&divide;</button>
+
+                <button type="button" class="btn-number" id="7">7</button>
+                <button type="button" class="btn-number" id="8">8</button>
+                <button type="button" class="btn-number" id="9">9</button>
+                <button type="button" class="btn-operator" data-operator="*" aria-label="Multiply">&times;</button>
+
+                <button type="button" class="btn-number" id="4">4</button>
+                <button type="button" class="btn-number" id="5">5</button>
+                <button type="button" class="btn-number" id="6">6</button>
+                <button type="button" class="btn-operator" id="-" data-operator="-" aria-label="Subtract">-</button>
+
+                <button type="button" class="btn-number" id="1">1</button>
+                <button type="button" class="btn-number" id="2">2</button>
+                <button type="button" class="btn-number" id="3">3</button>
+                <button type="button" class="btn-operator" id="+" data-operator="+" aria-label="Add">+</button>
+
+                <button type="button" class="btn-operator" data-operator="()" id="()" aria-label="Parenthesis">()</button>
+                <button type="button" class="btn-number" id="0">0</button>
+                <button type="button" class="btn-operator" id="." aria-label="Decimal point">.</button>
+                <button type="button" class="btn-operator btn-equal" data-operator="=" id="btn-equal" aria-label="Equals">=</button>
             </div>
-            <div class="display-screen">
-                <div id="display"></div>
-            </div>
-            <div class="buttons">
-                <table>
-                    <tr>
-                        <td><button class="btn-operator" data-operator="clear" id="clear">C</button></td>
-                        <td><button class="btn-operator" data-operator="sqrt">&Sqrt;</button></td>
-                        <td><button class="btn-operator" id="percentage">&percnt;</button></td>
-                        <td><button class="btn-operator" data-operator="/">&divide;</button></td>
-                    </tr>
-                    <tr>
-                        <td><button class="btn-number" id="7">7</button></td>
-                        <td><button class="btn-number" id="8">8</button></td>
-                        <td><button class="btn-number" id="9">9</button></td>
-                        <td><button class="btn-operator" data-operator="*">&times;</button></td>
-                    </tr>
-                    <tr>
-                        <td><button class="btn-number" id="4">4</button></td>
-                        <td><button class="btn-number" id="5">5</button></td>
-                        <td><button class="btn-number" id="6">6</button></td>
-                        <td><button class="btn-operator" id="-" data-operator="-">-</button></td>
-                    </tr>
-                    <tr>
-                        <td><button class="btn-number" id="1">1</button></td>
-                        <td><button class="btn-number" id="2">2</button></td>
-                        <td><button class="btn-number" id="3">3</button></td>
-                        <td><button class="btn-operator" id="+" data-operator="+">+</button></td>
-                    </tr>
-                    <tr>
-                        <td><button class="btn-operator" data-operator="()" id="()">()</button></td>
-                        <td><button class="btn-number" id="0">0</button></td>
-                        <td><button class="btn-operator" id=".">.</button></td>
-                        <td><button class="btn-operator" data-operator="=" id="btn-equal">=</button></td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-    </div>
+        </section>
+    </main>
     <script src="script/script.js"></script>
 </body>
 </html>
