@@ -148,6 +148,28 @@ function applyUnaryTransform(fn) {
     lastType = 'digit';
 }
 
+// +/- on an existing number flips its sign immediately (unchanged). With no
+// number yet -- blank expression, right after an operator, etc. -- it
+// toggles inserting "(-" to start a negative number: press once to add it,
+// press again (without typing anything else) to remove it, back and forth.
+function applySignToggle() {
+    if (lastType === 'digit' || lastType === 'decimal' || lastType === 'percent') {
+        applyUnaryTransform((x) => -x);
+        return;
+    }
+    if (lastType === 'sign' && display.textContent.endsWith('(-')) {
+        display.textContent = display.textContent.slice(0, -2);
+        openedParentheses = Math.max(0, openedParentheses - 1);
+        lastType = inferLastType();
+        return;
+    }
+    if (display.textContent.length <= MAX_LENGTH - 2) {
+        display.textContent += '(-';
+        openedParentheses++;
+        lastType = 'sign';
+    }
+}
+
 // If a trailing numeric value already exists, wraps it with a function
 // prefix, leaving the closing paren for the existing auto-close-on-eval
 // logic, e.g. "8" + this with "√(" -> "√(8" (evaluates to 2.828... once
@@ -447,7 +469,7 @@ function handleScientific(key) {
             }
             break;
         case 'sign':
-            applyUnaryTransform((x) => -x);
+            applySignToggle();
             break;
         default:
             break;
