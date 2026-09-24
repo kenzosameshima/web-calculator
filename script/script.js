@@ -13,8 +13,12 @@ const buttons = document.querySelectorAll('.buttons button');
 
 const MAX_LENGTH = 32;
 const PI = 'π';
-const EULER = 'ℯ'; // distinct from ASCII "e" so it can never be mistaken
-                         // for the exponent marker in a JS number literal like "5e3"
+// Plain ASCII "e" is safe here (not the look-alike script glyph) because
+// insertConstant/insertFunction always insert an implicit "*" before a
+// constant that follows a value, and the digit handler does the same after
+// one -- so a bare "e" can never end up directly touching a digit the way
+// "5e3" would, which is the only case that could be misread as JS's
+// scientific-notation exponent marker.
 
 let lastResult = '';
 let openedParentheses = 0;
@@ -117,9 +121,12 @@ function applyParenthesis() {
     }
 }
 
-// Applies fn to the trailing numeric value and splices the result back in,
-// e.g. "5+" + "3" -> press -> "5+" + fn(3). Used by %, 1/x, x^2, x!, +/-, etc.
-function applyUnaryTransform(fn, resultingType) {
+// Applies fn to the trailing numeric value immediately and splices the
+// result back in. Only +/- (sign flip) still works this way -- everything
+// else that used to be immediate (%, sqrt, x^2, 1/x, x!, ...) now stays as
+// readable text in the expression and gets evaluated by the preview/= step
+// instead, matching how a real calculator shows what you typed.
+function applyUnaryTransform(fn) {
     if (lastType !== 'digit' && lastType !== 'decimal' && lastType !== 'percent') {
         return;
     }
@@ -138,15 +145,80 @@ function applyUnaryTransform(fn, resultingType) {
     }
     const rounded = Number.isInteger(result) ? result : parseFloat(result.toFixed(12));
     display.textContent = prefix + rounded;
-    lastType = resultingType || 'digit';
+    lastType = 'digit';
 }
 
-function applyPercentage() {
-    applyUnaryTransform((x) => x / 100, 'percent');
+// If a trailing numeric value already exists, wraps it with a function
+// prefix, leaving the closing paren for the existing auto-close-on-eval
+// logic, e.g. "8" + this with "√(" -> "√(8" (evaluates to 2.828... once
+// auto-closed to "√(8)"). Otherwise -- blank expression, right after an
+// operator, etc. -- falls back to plain prefix insertion like insertFunction,
+// e.g. pressing √ on a blank display just gives "√(" and waits for input.
+// Used by sqrt/cbrt, 1/x, |x|, and shifted 2^x.
+function wrapOrInsert(prefixText) {
+    if (lastType === 'digit' || lastType === 'decimal' || lastType === 'percent') {
+        const match = display.textContent.match(/(-?\d+\.?\d*|-?\.\d+)$/);
+        if (match) {
+            const before = display.textContent.slice(0, match.index);
+            const value = match[0];
+            if (before.length + prefixText.length + value.length <= MAX_LENGTH) {
+                display.textContent = before + prefixText + value;
+                openedParentheses++;
+                lastType = 'digit';
+            }
+            return;
+        }
+    }
+    insertFunction(prefixText);
 }
+
+// Appends text right after the current value, e.g. "8" + "^(2)" -> "8^(2)",
+// or "8" + "!" -> "8!". Used by x^2, x^3 (shifted pi), and x! (shifted e).
+function appendSuffix(text) {
+    if (!isValueType(lastType)) {
+        return;
+    }
+    if (display.textContent.length + text.length > MAX_LENGTH) {
+        return;
+    }
+    display.textContent += text;
+    lastType = 'close-paren';
+}
+
+// % stays as literal text in the expression (e.g. "8%") instead of being
+// converted immediately -- toEvaluable() turns "N%" into "(N/100)" at
+// preview/eval time. Eligibility matches the old immediate version: only
+// right after a plain number, and blocked from stacking ("8%%").
+function applyPercentage() {
+    if (lastType !== 'digit' && lastType !== 'decimal') {
+        return;
+    }
+    if (display.textContent.length >= MAX_LENGTH) {
+        return;
+    }
+    display.textContent += '%';
+    lastType = 'percent';
+}
+
+// Multi-character function prefixes that get inserted as a single unit
+// (sin(, √(, etc.) -- backspacing one of these removes the whole token at
+// once instead of leaving a broken partial name like "si" or "lo" behind.
+// Sorted longest-first so e.g. "sinh⁻¹(" is matched before the shorter "sin(".
+const PREFIX_TOKENS = [
+    'sin⁻¹(', 'cos⁻¹(', 'tan⁻¹(', 'sinh⁻¹(', 'cosh⁻¹(', 'tanh⁻¹(',
+    'sin(', 'cos(', 'tan(', 'sinh(', 'cosh(', 'tanh(',
+    'ln(', 'log(', '√(', '∛(', 'abs(', 'e^(', '2^(', '1/(',
+].sort((a, b) => b.length - a.length);
 
 function applyBackspace() {
     if (display.textContent.length === 0) {
+        return;
+    }
+    const prefixToken = PREFIX_TOKENS.find((token) => display.textContent.endsWith(token));
+    if (prefixToken) {
+        display.textContent = display.textContent.slice(0, -prefixToken.length);
+        openedParentheses = Math.max(0, openedParentheses - 1);
+        lastType = inferLastType();
         return;
     }
     const removed = display.textContent[display.textContent.length - 1];
@@ -179,17 +251,23 @@ function inferLastType() {
     if (last >= '0' && last <= '9') {
         return 'digit';
     }
-    if (last === PI || last === EULER) {
+    if (last === PI || last === 'e') {
         return 'constant';
+    }
+    if (last === '%') {
+        return 'percent';
+    }
+    if (last === '!') {
+        return 'close-paren'; // sealed value, same downstream rules as a closed group
     }
     if (last === '+' || last === '-') {
         const prev = text[text.length - 2];
         const prevIsValue = prev !== undefined && (
-            (prev >= '0' && prev <= '9') || prev === ')' || prev === '.' || prev === PI || prev === EULER
+            (prev >= '0' && prev <= '9') || prev === ')' || prev === '.' || prev === PI || prev === 'e' || prev === '!' || prev === '%'
         );
         return prevIsValue ? 'operator' : 'sign';
     }
-    if (last === '*' || last === '/' || last === '%' || last === '^') {
+    if (last === '*' || last === '/' || last === '^') {
         return 'operator';
     }
     return null;
@@ -246,15 +324,15 @@ function insertFunction(text) {
 
 const SCI_LABELS = {
     sqrt: ['√', '∛'],
-    mod: ['mod', '2^x'],
+    abs: ['|x|', '2^x'],
     sin: ['sin', 'sin⁻¹'],
     cos: ['cos', 'cos⁻¹'],
     tan: ['tan', 'tan⁻¹'],
-    pi: [PI, EULER],
+    pi: [PI, 'x^3'],
     ln: ['ln', 'sinh'],
     log: ['log', 'cosh'],
     reciprocal: ['1/x', 'tanh'],
-    econst: [EULER, 'x!'],
+    econst: ['e', 'x!'],
     exp: ['e^x', 'sinh⁻¹'],
     square: ['x²', 'cosh⁻¹'],
     power: ['x^y', 'tanh⁻¹'],
@@ -262,11 +340,11 @@ const SCI_LABELS = {
 
 const SCI_ARIA = {
     sqrt: ['Square root', 'Cube root'],
-    mod: ['Modulo', '2 to the power of x'],
+    abs: ['Absolute value', '2 to the power of x'],
     sin: ['Sine', 'Inverse sine'],
     cos: ['Cosine', 'Inverse cosine'],
     tan: ['Tangent', 'Inverse tangent'],
-    pi: ['Pi', "Euler's number"],
+    pi: ['Pi', 'x cubed'],
     ln: ['Natural log', 'Hyperbolic sine'],
     log: ['Log base 10', 'Hyperbolic cosine'],
     reciprocal: ['Reciprocal', 'Hyperbolic tangent'],
@@ -310,14 +388,10 @@ function handleScientific(key) {
 
     switch (key) {
         case 'sqrt':
-            applyUnaryTransform(isShifted ? Math.cbrt : Math.sqrt);
+            wrapOrInsert(isShifted ? '∛(' : '√(');
             break;
-        case 'mod':
-            if (isShifted) {
-                applyUnaryTransform((x) => Math.pow(2, x));
-            } else {
-                applyOperator('%');
-            }
+        case 'abs':
+            wrapOrInsert(isShifted ? '2^(' : 'abs(');
             break;
         case 'sin':
             insertFunction(isShifted ? 'sin⁻¹(' : 'sin(');
@@ -329,7 +403,11 @@ function handleScientific(key) {
             insertFunction(isShifted ? 'tan⁻¹(' : 'tan(');
             break;
         case 'pi':
-            insertConstant(isShifted ? EULER : PI);
+            if (isShifted) {
+                appendSuffix('^(3)');
+            } else {
+                insertConstant(PI);
+            }
             break;
         case 'ln':
             insertFunction(isShifted ? 'sinh(' : 'ln(');
@@ -341,14 +419,14 @@ function handleScientific(key) {
             if (isShifted) {
                 insertFunction('tanh(');
             } else {
-                applyUnaryTransform((x) => 1 / x);
+                wrapOrInsert('1/(');
             }
             break;
         case 'econst':
             if (isShifted) {
-                applyUnaryTransform(factorial);
+                appendSuffix('!');
             } else {
-                insertConstant(EULER);
+                insertConstant('e');
             }
             break;
         case 'exp':
@@ -358,7 +436,7 @@ function handleScientific(key) {
             if (isShifted) {
                 insertFunction('cosh⁻¹(');
             } else {
-                applyUnaryTransform((x) => x * x);
+                appendSuffix('^(2)');
             }
             break;
         case 'power':
@@ -404,9 +482,10 @@ const EVAL_REPLACEMENTS = {
     'log(': 'Math.log10(',
     '√(': 'Math.sqrt(',
     '∛(': 'Math.cbrt(',
+    'abs(': 'Math.abs(',
     'e^(': 'Math.exp(',
     [PI]: 'Math.PI',
-    [EULER]: 'Math.E',
+    e: 'Math.E',
     '^': '**',
 };
 
@@ -418,8 +497,20 @@ const EVAL_REPLACEMENT_PATTERN = new RegExp(
     'g'
 );
 
+const NUMBER_PATTERN = /(-?\d+\.?\d*|-?\.\d+)/;
+const PERCENT_SUFFIX_PATTERN = new RegExp(NUMBER_PATTERN.source + '%', 'g');
+const FACTORIAL_SUFFIX_PATTERN = new RegExp(NUMBER_PATTERN.source + '!', 'g');
+
+// "N%" and "N!" are postfix math notation, not valid JS -- rewrite them to
+// function calls before the general substitution pass runs.
+function expandPostfixNotation(text) {
+    return text
+        .replace(PERCENT_SUFFIX_PATTERN, '($1/100)')
+        .replace(FACTORIAL_SUFFIX_PATTERN, 'factorial($1)');
+}
+
 function toEvaluable(text) {
-    return text.replace(EVAL_REPLACEMENT_PATTERN, (match) => EVAL_REPLACEMENTS[match]);
+    return expandPostfixNotation(text).replace(EVAL_REPLACEMENT_PATTERN, (match) => EVAL_REPLACEMENTS[match]);
 }
 
 function buildEvaluableExpression() {
@@ -514,17 +605,18 @@ buttons.forEach((item) => {
                 }
                 // No digit typed yet for this number (start of expression, right
                 // after an operator/open-paren/sign), or the previous token is a
-                // sealed value (closed group or constant) -> needs a fresh "0."
-                // and possibly an implicit multiply, e.g. "(5)" + "." -> "(5)*0.".
-                const startsFresh = lastType === null || lastType === 'operator' || lastType === 'open-paren' || lastType === 'sign' || lastType === 'close-paren' || lastType === 'constant';
-                const needsImplicitMultiply = lastType === 'close-paren' || lastType === 'constant';
+                // sealed value (closed group, constant, or percent suffix) ->
+                // needs a fresh "0." and possibly an implicit multiply, e.g.
+                // "(5)" + "." -> "(5)*0.".
+                const startsFresh = lastType === null || lastType === 'operator' || lastType === 'open-paren' || lastType === 'sign' || lastType === 'close-paren' || lastType === 'constant' || lastType === 'percent';
+                const needsImplicitMultiply = lastType === 'close-paren' || lastType === 'constant' || lastType === 'percent';
                 const insertion = (needsImplicitMultiply ? '*' : '') + (startsFresh ? '0.' : '.');
                 if (display.textContent.length <= MAX_LENGTH - insertion.length) {
                     display.textContent += insertion;
                     lastType = 'decimal';
                 }
             } else {
-                const needsImplicitMultiply = lastType === 'close-paren' || lastType === 'constant';
+                const needsImplicitMultiply = lastType === 'close-paren' || lastType === 'constant' || lastType === 'percent';
                 const insertion = (needsImplicitMultiply ? '*' : '') + item.textContent;
                 if (display.textContent.length <= MAX_LENGTH - insertion.length) {
                     display.textContent += insertion;
@@ -540,6 +632,10 @@ sciToggleBtn.addEventListener('click', () => {
     const isOpen = sciPanel.hidden;
     sciPanel.hidden = !isOpen;
     sciToggleBtn.setAttribute('aria-pressed', String(isOpen));
+    // Keep the whole buttons area the same height it had in normal mode by
+    // shrinking every button (both grids) into shorter, pill-shaped rows
+    // instead of letting the calculator grow taller.
+    calculator.classList.toggle('compact', isOpen);
 });
 
 themeToggleBtn.addEventListener('click', () => {
