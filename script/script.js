@@ -20,6 +20,9 @@ const PI = 'π';
 // "5e3" would, which is the only case that could be misread as JS's
 // scientific-notation exponent marker.
 
+const NUMBER_PATTERN = /(-?\d+\.?\d*|-?\.\d+)/;
+const TRAILING_NUMBER_PATTERN = new RegExp(NUMBER_PATTERN.source + '$');
+
 let lastResult = '';
 let openedParentheses = 0;
 let closedParentheses = 0;
@@ -36,6 +39,23 @@ let lastType = null;
 // a postfix transform can attach to. A bare sign or an operator isn't one.
 function isValueType(type) {
     return type === 'digit' || type === 'decimal' || type === 'percent' || type === 'close-paren' || type === 'constant';
+}
+
+// A plain number the trailing-number regex can actually extract -- narrower
+// than isValueType, since a closed group or a constant isn't literal digits.
+function isPlainNumberType(type) {
+    return type === 'digit' || type === 'decimal' || type === 'percent';
+}
+
+// Finds the number at the very end of the display (used by anything that
+// operates on "whatever you just typed"), returning the text before it and
+// the number itself, or null if the display doesn't currently end in one.
+function matchTrailingNumber() {
+    const match = display.textContent.match(TRAILING_NUMBER_PATTERN);
+    if (!match) {
+        return null;
+    }
+    return { prefix: display.textContent.slice(0, match.index), value: match[0] };
 }
 
 function currentSegmentHasDecimal() {
@@ -127,15 +147,14 @@ function applyParenthesis() {
 // readable text in the expression and gets evaluated by the preview/= step
 // instead, matching how a real calculator shows what you typed.
 function applyUnaryTransform(fn) {
-    if (lastType !== 'digit' && lastType !== 'decimal' && lastType !== 'percent') {
+    if (!isPlainNumberType(lastType)) {
         return;
     }
-    const match = display.textContent.match(/(-?\d+\.?\d*|-?\.\d+)$/);
-    if (!match) {
+    const trailing = matchTrailingNumber();
+    if (!trailing) {
         return;
     }
-    const prefix = display.textContent.slice(0, match.index);
-    const result = fn(parseFloat(match[0]));
+    const result = fn(parseFloat(trailing.value));
     if (typeof result !== 'number' || !Number.isFinite(result)) {
         display.textContent = 'Error';
         lastType = null;
@@ -144,7 +163,7 @@ function applyUnaryTransform(fn) {
         return;
     }
     const rounded = Number.isInteger(result) ? result : parseFloat(result.toFixed(12));
-    display.textContent = prefix + rounded;
+    display.textContent = trailing.prefix + rounded;
     lastType = 'digit';
 }
 
@@ -153,7 +172,7 @@ function applyUnaryTransform(fn) {
 // toggles inserting "(-" to start a negative number: press once to add it,
 // press again (without typing anything else) to remove it, back and forth.
 function applySignToggle() {
-    if (lastType === 'digit' || lastType === 'decimal' || lastType === 'percent') {
+    if (isPlainNumberType(lastType)) {
         applyUnaryTransform((x) => -x);
         return;
     }
@@ -178,13 +197,11 @@ function applySignToggle() {
 // e.g. pressing √ on a blank display just gives "√(" and waits for input.
 // Used by sqrt/cbrt, 1/x, |x|, and shifted 2^x.
 function wrapOrInsert(prefixText) {
-    if (lastType === 'digit' || lastType === 'decimal' || lastType === 'percent') {
-        const match = display.textContent.match(/(-?\d+\.?\d*|-?\.\d+)$/);
-        if (match) {
-            const before = display.textContent.slice(0, match.index);
-            const value = match[0];
-            if (before.length + prefixText.length + value.length <= MAX_LENGTH) {
-                display.textContent = before + prefixText + value;
+    if (isPlainNumberType(lastType)) {
+        const trailing = matchTrailingNumber();
+        if (trailing) {
+            if (trailing.prefix.length + prefixText.length + trailing.value.length <= MAX_LENGTH) {
+                display.textContent = trailing.prefix + prefixText + trailing.value;
                 openedParentheses++;
                 lastType = 'digit';
             }
@@ -323,25 +340,28 @@ function factorial(n) {
     return result;
 }
 
-function insertConstant(symbol) {
-    const prefix = isValueType(lastType) ? '*' : '';
-    const insertion = prefix + symbol;
-    if (display.textContent.length > MAX_LENGTH - insertion.length) {
-        return;
-    }
-    display.textContent += insertion;
-    lastType = 'constant';
-}
-
-function insertFunction(text) {
+// Shared by insertConstant/insertFunction below: both just append a token
+// with an implicit "*" prefix when it follows a value, differing only in
+// whether that token opens a paren group and what lastType it leaves behind.
+function insertValueToken(text, resultingType, opensParen) {
     const prefix = isValueType(lastType) ? '*' : '';
     const insertion = prefix + text;
     if (display.textContent.length > MAX_LENGTH - insertion.length) {
         return;
     }
     display.textContent += insertion;
-    openedParentheses++;
-    lastType = 'open-paren';
+    if (opensParen) {
+        openedParentheses++;
+    }
+    lastType = resultingType;
+}
+
+function insertConstant(symbol) {
+    insertValueToken(symbol, 'constant', false);
+}
+
+function insertFunction(text) {
+    insertValueToken(text, 'open-paren', true);
 }
 
 const SCI_LABELS = {
@@ -519,9 +539,7 @@ const EVAL_REPLACEMENT_PATTERN = new RegExp(
     'g'
 );
 
-const NUMBER_PATTERN = /(-?\d+\.?\d*|-?\.\d+)/;
 const FACTORIAL_SUFFIX_PATTERN = new RegExp(NUMBER_PATTERN.source + '!', 'g');
-const TRAILING_NUMBER_PATTERN = new RegExp(NUMBER_PATTERN.source + '$');
 
 // "%" applies to whichever value sits right before it: a plain number
 // ("8%") or a whole parenthesized group ("(5+3)%"), the latter needing a
@@ -656,25 +674,25 @@ buttons.forEach((item) => {
             }
         } else {
             clearIfJustEvaluated();
+            // A sealed value (closed group, constant, or percent suffix) can't be
+            // extended by typing more digits -- it needs an implicit multiply to
+            // start a new number instead, e.g. "(5)" + "3" -> "(5)*3".
+            const needsImplicitMultiply = lastType === 'close-paren' || lastType === 'constant' || lastType === 'percent';
             if (item.textContent === '.') {
                 if (currentSegmentHasDecimal()) {
                     updatePreview();
                     return;
                 }
                 // No digit typed yet for this number (start of expression, right
-                // after an operator/open-paren/sign), or the previous token is a
-                // sealed value (closed group, constant, or percent suffix) ->
-                // needs a fresh "0." and possibly an implicit multiply, e.g.
-                // "(5)" + "." -> "(5)*0.".
-                const startsFresh = lastType === null || lastType === 'operator' || lastType === 'open-paren' || lastType === 'sign' || lastType === 'close-paren' || lastType === 'constant' || lastType === 'percent';
-                const needsImplicitMultiply = lastType === 'close-paren' || lastType === 'constant' || lastType === 'percent';
+                // after an operator/open-paren/sign) -> needs a fresh "0." instead
+                // of just ".".
+                const startsFresh = lastType === null || lastType === 'operator' || lastType === 'open-paren' || lastType === 'sign' || needsImplicitMultiply;
                 const insertion = (needsImplicitMultiply ? '*' : '') + (startsFresh ? '0.' : '.');
                 if (display.textContent.length <= MAX_LENGTH - insertion.length) {
                     display.textContent += insertion;
                     lastType = 'decimal';
                 }
             } else {
-                const needsImplicitMultiply = lastType === 'close-paren' || lastType === 'constant' || lastType === 'percent';
                 const insertion = (needsImplicitMultiply ? '*' : '') + item.textContent;
                 if (display.textContent.length <= MAX_LENGTH - insertion.length) {
                     display.textContent += insertion;
