@@ -69,6 +69,42 @@ body {
     font: inherit;
 }
 
+.mode-toggler {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    z-index: 1;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 0;
+    padding: 6px 14px;
+    height: auto;
+    width: auto;
+    margin: 0;
+    font: inherit;
+    font-size: 14px;
+    font-weight: bold;
+    border-radius: 20px;
+    cursor: pointer;
+    background-color: rgba(0, 0, 0, 0.08);
+    color: #333;
+}
+
+.calculator.dark .mode-toggler {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.mode-toggler[aria-pressed="true"] {
+    background-color: #ffd0fd;
+    color: #f967f3;
+}
+
+.calculator.dark .mode-toggler[aria-pressed="true"] {
+    background-color: #2e1f39;
+    color: #aa00a4;
+}
+
 .theme-toggler.active {
     color: #333;
 }
@@ -87,6 +123,18 @@ body {
     border-radius: 50%;
     background-color: #333;
     z-index: -1;
+}
+
+#preview {
+    margin: 50px 10px 0;
+    height: 20px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    font-size: 14px;
+    opacity: 0.6;
+    overflow-x: hidden;
+    white-space: nowrap;
 }
 
 #display {
@@ -127,6 +175,31 @@ button:hover {
     grid-template-columns: repeat(4, auto);
 }
 
+.scientific-buttons {
+    margin-bottom: 10px;
+}
+
+.scientific-buttons[hidden] {
+    display: none;
+}
+
+.scientific-buttons button {
+    width: 50px;
+    height: 50px;
+    border-radius: 25px;
+    font-size: 13px;
+}
+
+#sci-shift[aria-pressed="true"] {
+    background-color: #adf9e7;
+    color: #000;
+}
+
+.calculator.dark #sci-shift[aria-pressed="true"] {
+    background-color: #223323;
+    color: #fff;
+}
+
 
 
 
@@ -138,6 +211,10 @@ button:hover {
 }
 
 .calculator #display {
+    color: #0a1e23;
+}
+
+.calculator #preview {
     color: #0a1e23;
 }
 
@@ -168,6 +245,10 @@ button:hover {
 }
 
 .calculator.dark #display {
+    color: #f8fafd;
+}
+
+.calculator.dark #preview {
     color: #f8fafd;
 }
 

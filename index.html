@@ -13,13 +13,37 @@
         <section class="calculator dark" aria-labelledby="calculator-heading">
             <h1 id="calculator-heading" class="visually-hidden">Calculator</h1>
 
+            <button type="button" id="sci-toggle" class="mode-toggler" aria-pressed="false" aria-label="Toggle scientific mode">fx</button>
             <button type="button" class="theme-toggler active" aria-label="Toggle light and dark theme"></button>
 
+            <output id="preview" aria-hidden="true"></output>
             <output id="display" aria-live="polite" aria-atomic="true"></output>
+
+            <div class="buttons scientific-buttons" id="scientific-buttons" role="group" aria-label="Scientific functions" hidden>
+                <button type="button" class="btn-operator" id="sci-shift" data-sci="shift" aria-pressed="false" aria-label="Shift">2nd</button>
+                <button type="button" class="btn-operator" id="sci-angle" data-sci="angle" aria-label="Angle unit: radians">Rad</button>
+                <button type="button" class="btn-operator" data-sci="sqrt" aria-label="Square root">&radic;</button>
+                <button type="button" class="btn-operator" data-sci="mod" aria-label="Modulo">mod</button>
+
+                <button type="button" class="btn-operator" data-sci="sin" aria-label="Sine">sin</button>
+                <button type="button" class="btn-operator" data-sci="cos" aria-label="Cosine">cos</button>
+                <button type="button" class="btn-operator" data-sci="tan" aria-label="Tangent">tan</button>
+                <button type="button" class="btn-operator" data-sci="pi" aria-label="Pi">&pi;</button>
+
+                <button type="button" class="btn-operator" data-sci="ln" aria-label="Natural log">ln</button>
+                <button type="button" class="btn-operator" data-sci="log" aria-label="Log base 10">log</button>
+                <button type="button" class="btn-operator" data-sci="reciprocal" aria-label="Reciprocal">1/x</button>
+                <button type="button" class="btn-operator" data-sci="econst" aria-label="Euler's number">&#8494;</button>
+
+                <button type="button" class="btn-operator" data-sci="exp" aria-label="e to the x">e^x</button>
+                <button type="button" class="btn-operator" data-sci="square" aria-label="x squared">x&sup2;</button>
+                <button type="button" class="btn-operator" data-sci="power" aria-label="x to the y">x^y</button>
+                <button type="button" class="btn-operator" data-sci="sign" aria-label="Toggle sign">+/-</button>
+            </div>
 
             <div class="buttons" role="group" aria-label="Calculator keypad">
                 <button type="button" class="btn-operator" data-operator="clear" id="clear" aria-label="Clear">C</button>
-                <button type="button" class="btn-operator" data-operator="sqrt" aria-label="Square root">&Sqrt;</button>
+                <button type="button" class="btn-operator" data-operator="backspace" aria-label="Backspace">&#9003;</button>
                 <button type="button" class="btn-operator" data-operator="percentage" id="percentage" aria-label="Percent">&percnt;</button>
                 <button type="button" class="btn-operator" data-operator="/" aria-label="Divide">&divide;</button>
 
