@@ -25,7 +25,7 @@ let openedParentheses = 0;
 let closedParentheses = 0;
 let justEvaluated = false;
 let isShifted = false;
-let angleMode = 'rad';
+let angleMode = 'deg';
 
 // What kind of token the display currently ends with. Drives whether the
 // next button press appends, replaces, or is ignored.
