@@ -207,12 +207,12 @@ function appendSuffix(text) {
     lastType = 'close-paren';
 }
 
-// % stays as literal text in the expression (e.g. "8%") instead of being
-// converted immediately -- toEvaluable() turns "N%" into "(N/100)" at
-// preview/eval time. Eligibility matches the old immediate version: only
-// right after a plain number, and blocked from stacking ("8%%").
+// % stays as literal text in the expression (e.g. "8%" or "(5+3)%") instead
+// of being converted immediately -- toEvaluable() turns it into "(N/100)"
+// at preview/eval time. Right after a plain number or a closed group;
+// blocked from stacking ("8%%").
 function applyPercentage() {
-    if (lastType !== 'digit' && lastType !== 'decimal') {
+    if (lastType !== 'digit' && lastType !== 'decimal' && lastType !== 'close-paren') {
         return;
     }
     if (display.textContent.length >= MAX_LENGTH) {
@@ -520,15 +520,51 @@ const EVAL_REPLACEMENT_PATTERN = new RegExp(
 );
 
 const NUMBER_PATTERN = /(-?\d+\.?\d*|-?\.\d+)/;
-const PERCENT_SUFFIX_PATTERN = new RegExp(NUMBER_PATTERN.source + '%', 'g');
 const FACTORIAL_SUFFIX_PATTERN = new RegExp(NUMBER_PATTERN.source + '!', 'g');
+const TRAILING_NUMBER_PATTERN = new RegExp(NUMBER_PATTERN.source + '$');
+
+// "%" applies to whichever value sits right before it: a plain number
+// ("8%") or a whole parenthesized group ("(5+3)%"), the latter needing a
+// balanced scan since a plain regex can't match arbitrary paren nesting.
+function expandPercentSuffixes(text) {
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] !== '%') {
+            result += text[i];
+            continue;
+        }
+        if (result.endsWith(')')) {
+            let depth = 0;
+            let start = result.length - 1;
+            for (; start >= 0; start--) {
+                if (result[start] === ')') {
+                    depth++;
+                } else if (result[start] === '(') {
+                    depth--;
+                    if (depth === 0) {
+                        break;
+                    }
+                }
+            }
+            if (start >= 0) {
+                result = result.slice(0, start) + '(' + result.slice(start) + '/100)';
+                continue;
+            }
+        }
+        const match = result.match(TRAILING_NUMBER_PATTERN);
+        if (match) {
+            result = result.slice(0, match.index) + '(' + match[0] + '/100)';
+            continue;
+        }
+        result += '%'; // shouldn't happen -- % is only ever entered after a value
+    }
+    return result;
+}
 
 // "N%" and "N!" are postfix math notation, not valid JS -- rewrite them to
 // function calls before the general substitution pass runs.
 function expandPostfixNotation(text) {
-    return text
-        .replace(PERCENT_SUFFIX_PATTERN, '($1/100)')
-        .replace(FACTORIAL_SUFFIX_PATTERN, 'factorial($1)');
+    return expandPercentSuffixes(text).replace(FACTORIAL_SUFFIX_PATTERN, 'factorial($1)');
 }
 
 function toEvaluable(text) {
@@ -663,4 +699,43 @@ sciToggleBtn.addEventListener('click', () => {
 themeToggleBtn.addEventListener('click', () => {
     calculator.classList.toggle('dark');
     themeToggleBtn.classList.toggle('active');
+});
+
+// ---- keyboard input ---------------------------------------------------
+// Maps keys to the matching normal-grid button and reuses its click
+// handler, so keyboard entry goes through the exact same logic as a click.
+
+const normalGrid = document.querySelector('.buttons:not(.scientific-buttons)');
+
+function operatorButton(op) {
+    return normalGrid.querySelector(`[data-operator="${op}"]`);
+}
+
+const KEY_TO_BUTTON = {
+    '.': () => document.getElementById('.'),
+    '+': () => document.getElementById('+'),
+    '-': () => document.getElementById('-'),
+    '*': () => operatorButton('*'),
+    '/': () => operatorButton('/'),
+    '%': () => document.getElementById('percentage'),
+    '(': () => document.getElementById('()'),
+    ')': () => document.getElementById('()'),
+    Enter: () => document.getElementById('btn-equal'),
+    '=': () => document.getElementById('btn-equal'),
+    Backspace: () => operatorButton('backspace'),
+    Escape: () => document.getElementById('clear'),
+    Delete: () => document.getElementById('clear'),
+};
+
+document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+    }
+    const key = event.key;
+    const lookup = key >= '0' && key <= '9' ? () => document.getElementById(key) : KEY_TO_BUTTON[key];
+    const button = lookup && lookup();
+    if (button) {
+        event.preventDefault();
+        button.click();
+    }
 });
